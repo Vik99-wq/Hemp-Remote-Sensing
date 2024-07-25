@@ -8,8 +8,9 @@ import timeit
 
 start = timeit.default_timer()
 
-DOMINANT_COLORS = 20
+DOMINANT_COLORS = 50
 FILEPATH = "hemp1.jpeg"
+NUM_LUMA = 4
 
 def generateOriginalImage():
 
@@ -138,6 +139,18 @@ def imageClosing(img, imageNum, times):
     plt.close()
     return closedImg, closedFilepath
 
+def imageDilation(img, imageNum, times):
+    dilatedFilepath = f'BW{imageNum}.png'
+    dilatedImg = morphology.dilation(img)
+    plt.imshow(dilatedImg)
+    #plt.suptitle(f"{times}x Closing, K={DOMINANT_COLORS}")
+    plt.axis('off')
+    #plt.savefig(closedFilepath, bbox_inches='tight')
+    plt.savefig(dilatedFilepath, bbox_inches='tight', pad_inches = 0)
+    #plt.show()
+    plt.close()
+    return dilatedImg, dilatedFilepath
+
 def generateTransparentImage(filepath):
     transparentFilepath = 'transparent_image.png'
     BW = Image.open(filepath)
@@ -155,6 +168,7 @@ def generateTransparentImage(filepath):
     return transparentFilepath
 
 def overlayImages(segmentedFilepath, transparentFilepath):
+    overlayFilepath = 'overlayed.png'
     '''
     background = cv2.imread(segmentedFilepath)
     overlay = cv2.imread(transparentFilepath)
@@ -184,10 +198,25 @@ def overlayImages(segmentedFilepath, transparentFilepath):
 
     # display the image
     #cv2.imshow("Composited image", background)
-    cv2.imwrite('overlayed.png', background) 
+    cv2.imwrite(overlayFilepath, background) 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+    return overlayFilepath
 
+def findBlobs(img_filepath):
+    cannyFilepath = 'Canny_Edges_After_Contouring.png'
+    contourFilepath = 'Contours.png'
+    img = cv2.imread(img_filepath)
+    imgray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    edged = cv2.Canny(imgray, 30, 200) 
+    #contours, hierarchy = cv2.findContours(edged,cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+    contours, hierarchy = cv2.findContours(edged,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    cv2.imwrite(cannyFilepath, edged) 
+    print("Number of Contours found = " + str(len(contours))) 
+    cv2.drawContours(img, contours, -1, (255, 255, 255), thickness=cv2.FILLED) 
+    cv2.imwrite(contourFilepath, img) 
+    cv2.destroyAllWindows()
+    return cannyFilepath, contourFilepath
 
 im = generateOriginalImage()
 km, centers = kMeans(im)
@@ -200,10 +229,18 @@ bw_img, BW1Filepath = generateBWImage(bw_img, km, colors, original_shape)
 opened_img1x, openedFilepath1x = imageOpening(bw_img, 2, 1)
 closed_img1x, closedFilepath1x = imageClosing(opened_img1x, 3, 1)
 closed_img2x, closedFilepath2x = imageClosing(closed_img1x, 4, 2)
+closed_img3x, closedFilepath3x = imageClosing(closed_img1x, 5, 3)
+dilated_img1x, dilatedFilepath1x = imageDilation(closed_img1x, 6, 1)
+dilated_img2x, dilatedFilepath2x = imageDilation(closed_img1x, 7, 2)
+dilated_img3x, dilatedFilepath3x = imageDilation(closed_img1x, 8, 3)
+dilated_img4x, dilatedFilepath4x = imageDilation(closed_img1x, 9, 4)
 #transparentFilepath = generateTransparentImage(closedFilepath2x)
-transparentFilepath = generateTransparentImage(BW1Filepath)
-overlayImages(segmentedFilepath, transparentFilepath)
+#transparentFilepath = generateTransparentImage(dilatedFilepath4x)
+#overlayFilepath = overlayImages(segmentedFilepath, transparentFilepath)
+cannyFilepath, contourFilepath = findBlobs(dilatedFilepath4x)
+transparentFilepath = generateTransparentImage(contourFilepath)
+overlayFilepath = overlayImages(segmentedFilepath, transparentFilepath)
+
 
 stop = timeit.default_timer()
-
 print('Runtime: ', round((stop - start), 2))
