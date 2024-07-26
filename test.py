@@ -8,9 +8,10 @@ import timeit
 
 start = timeit.default_timer()
 
-DOMINANT_COLORS = 50
+DOMINANT_COLORS = 35
 FILEPATH = "hemp1.jpeg"
-NUM_LUMA = 4
+NUM_LUMA = 1
+threshold_area = 20
 
 def generateOriginalImage():
 
@@ -63,19 +64,23 @@ def initNewImg(im):
     return new_img, original_shape
 
 def getLightestColor(colors):
-    luma = 0
-    index = 0
+    luma = np.zeros(NUM_LUMA)
+    #luma = 0
+    indexes = np.zeros(NUM_LUMA)
     indexTemp = 0
     for color in colors:
         red = color[0]
         green = color[1]
         blue = color[2]
         lumaTemp = (0.2126 * red) + (0.7152 * green) + (0.0722 * blue)
-        if lumaTemp > luma:
-            luma = lumaTemp
-            index = indexTemp
+        #if lumaTemp > luma:
+        if lumaTemp > min(luma):
+            luma[np.argmin(luma)] = lumaTemp
+            indexes[np.argmin(luma)] = indexTemp
+        #    luma = lumaTemp
+        #    index = indexTemp
         indexTemp += 1
-    return index
+    return indexes
 
 def generateSegmentedImage(new_img):
     segmentedFilepath = 'segmented.png'
@@ -92,11 +97,11 @@ def generateSegmentedImage(new_img):
     plt.close()
     return new_img, segmentedFilepath
 
-def generateBWImage(bw_img, km, colors, original_shape):
+def generateBWImage(bw_img, km, colors, original_shape, lightestIndexes):
     BW1Filepath = 'BW1.png'
     grayscaleColors = colors
     for i in range(len(grayscaleColors)):
-        if i == lightestIndex:
+        if i in lightestIndexes:
             grayscaleColors[i] = [255,255,255]
         else:
             grayscaleColors[i] = [0,0,0]
@@ -115,11 +120,15 @@ def generateBWImage(bw_img, km, colors, original_shape):
     plt.close()
     return bw_img, BW1Filepath
 
-def imageOpening(img, imageNum, times):
+def imageOpening(img, imageNum, iterations):
     openedFilepath = f'BW{imageNum}.png'
-    opened_img = morphology.opening(img)
+    img = img.copy()
+    opened_img = img
+    for i in range(iterations):
+        opened_img = morphology.opening(img)
+        img = opened_img
     plt.imshow(opened_img)
-    #plt.suptitle(f"{times}x Opening, K={DOMINANT_COLORS}")
+    #plt.suptitle(f"{iterations}x Opening, K={DOMINANT_COLORS}")
     plt.axis('off')
     #plt.savefig(openedFilepath, bbox_inches='tight')
     plt.savefig(openedFilepath, bbox_inches='tight', pad_inches = 0)
@@ -127,9 +136,13 @@ def imageOpening(img, imageNum, times):
     plt.close()
     return opened_img, openedFilepath
 
-def imageClosing(img, imageNum, times):
+def imageClosing(img, imageNum, iterations):
     closedFilepath = f'BW{imageNum}.png'
-    closedImg = morphology.closing(img)
+    img = img.copy()
+    closedImg = img
+    for i in range(iterations):
+        closedImg = morphology.closing(img)
+        img = closedImg
     plt.imshow(closedImg)
     #plt.suptitle(f"{times}x Closing, K={DOMINANT_COLORS}")
     plt.axis('off')
@@ -139,9 +152,13 @@ def imageClosing(img, imageNum, times):
     plt.close()
     return closedImg, closedFilepath
 
-def imageDilation(img, imageNum, times):
+def imageDilation(img, imageNum, iterations):
     dilatedFilepath = f'BW{imageNum}.png'
-    dilatedImg = morphology.dilation(img)
+    img = img.copy()
+    dilatedImg = img
+    for i in range(iterations):
+        dilatedImg = morphology.dilation(img)
+        img = dilatedImg
     plt.imshow(dilatedImg)
     #plt.suptitle(f"{times}x Closing, K={DOMINANT_COLORS}")
     plt.axis('off')
@@ -212,33 +229,43 @@ def findBlobs(img_filepath):
     #contours, hierarchy = cv2.findContours(edged,cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     contours, hierarchy = cv2.findContours(edged,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     cv2.imwrite(cannyFilepath, edged) 
+
     print("Number of Contours found = " + str(len(contours))) 
     cv2.drawContours(img, contours, -1, (255, 255, 255), thickness=cv2.FILLED) 
     cv2.imwrite(contourFilepath, img) 
+    cleanedFilepath = minimizeBlobs(contours, img)
     cv2.destroyAllWindows()
-    return cannyFilepath, contourFilepath
+    return cannyFilepath, contourFilepath, cleanedFilepath
+
+def minimizeBlobs(contours, img):
+    cleanedFilepath = 'cleanedContours.png'
+    counter = 0
+    for cnt in contours:        
+        area = cv2.contourArea(cnt)         
+        if area < threshold_area:
+            cv2.drawContours(img, [cnt], 0, (0, 0, 0), -1)
+            counter += 1
+    print("Number of Contours removed = " + str(counter)) 
+    cv2.imwrite(cleanedFilepath, img)
+    cv2.destroyAllWindows()
+    return cleanedFilepath
 
 im = generateOriginalImage()
 km, centers = kMeans(im)
 colors = Colors(centers)
 new_img, original_shape = initNewImg(im)
-lightestIndex = getLightestColor(colors)
+lightestIndexes = getLightestColor(colors)
 bw_img = new_img
 new_img, segmentedFilepath = generateSegmentedImage(new_img)
-bw_img, BW1Filepath = generateBWImage(bw_img, km, colors, original_shape)
-opened_img1x, openedFilepath1x = imageOpening(bw_img, 2, 1)
-closed_img1x, closedFilepath1x = imageClosing(opened_img1x, 3, 1)
-closed_img2x, closedFilepath2x = imageClosing(closed_img1x, 4, 2)
-closed_img3x, closedFilepath3x = imageClosing(closed_img1x, 5, 3)
-dilated_img1x, dilatedFilepath1x = imageDilation(closed_img1x, 6, 1)
-dilated_img2x, dilatedFilepath2x = imageDilation(closed_img1x, 7, 2)
-dilated_img3x, dilatedFilepath3x = imageDilation(closed_img1x, 8, 3)
-dilated_img4x, dilatedFilepath4x = imageDilation(closed_img1x, 9, 4)
-#transparentFilepath = generateTransparentImage(closedFilepath2x)
-#transparentFilepath = generateTransparentImage(dilatedFilepath4x)
-#overlayFilepath = overlayImages(segmentedFilepath, transparentFilepath)
-cannyFilepath, contourFilepath = findBlobs(dilatedFilepath4x)
-transparentFilepath = generateTransparentImage(contourFilepath)
+bw_img, BW1Filepath = generateBWImage(bw_img, km, colors, original_shape, lightestIndexes)
+
+
+dilated_img, dilatedFilepath = imageDilation(bw_img, 2, 0)
+closed_img, closedFilepath = imageClosing(dilated_img, 3, 13)
+#opened_img, openedFilepath = imageOpening(closed_img, 4, 1)
+dilated_img, dilatedFilepath = imageDilation(closed_img, 4, 3)
+cannyFilepath, contourFilepath, cleanedFilepath = findBlobs(dilatedFilepath)
+transparentFilepath = generateTransparentImage(cleanedFilepath)
 overlayFilepath = overlayImages(segmentedFilepath, transparentFilepath)
 
 
